@@ -185,7 +185,7 @@ def main():
 
         st.dataframe(
             table_df[['time', 'Condition', 'wave_height_ft', 'period_sec', 'wind_speed_mph', 'wind_deg']]
-            .style.applymap(score_style, subset=['Condition']),
+            .style.map(score_style, subset=['Condition']),
             column_config={
                 "wave_height_ft": st.column_config.NumberColumn("Waves (ft)", format="%.2f"),
                 "wind_speed_mph": st.column_config.NumberColumn("Wind (mph)", format="%.0f"),
