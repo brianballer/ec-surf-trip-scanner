@@ -17,6 +17,12 @@ M_TO_FT = 3.28084
 KMH_TO_MPH = 0.621371
 TIMEZONE = "America/New_York"
 
+COLOR_MAP = {
+    2: "#72cc9b", # Clean / Green
+    1: "#f6eb14", # Fair / Yellow
+    0: "#e85151"  # Choppy / Red
+}
+
 # --- SESSION STATE INITIALIZATION ---
 # We initialize these BEFORE the widgets to ensure logic flows correctly
 if "sel_spot" not in st.session_state:
@@ -70,7 +76,7 @@ def get_score(row, beach_face):
 
 # --- UI LOGIC ---
 def main():
-    st.title("🏄‍♂️ Rina's Surf Scout")
+    st.title("🏄‍♂️ Rina and 🏄🏼‍♀️ Rosalie's Surf Scout")
     
     all_data = {}
     heatmap_list = []
@@ -82,6 +88,7 @@ def main():
             df['hour'] = df['time'].dt.hour
             df['date'] = df['time'].dt.date
             df['spot'] = name
+            df['color'] = df['score'].map(COLOR_MAP)
             all_data[name] = df
             heatmap_list.append(df[(df['hour'] >= 6) & (df['hour'] <= 19)])
 
@@ -89,18 +96,51 @@ def main():
         st.error("API Data currently unavailable.")
         return
 
-    # --- 1. THE HEATMAP (VISUAL ONLY) ---
-    st.subheader("14-Day Condition Matrix")
-    h_df = pd.concat(heatmap_list)
-    fig_matrix = go.Figure(data=go.Heatmap(
-        z=h_df['score'], x=h_df['time'], y=h_df['spot'],
-        colorscale=[[0, '#ff4b4b'], [0.5, '#ffeb3b'], [1, '#00c853']],
-        showscale=False, xgap=1, ygap=4,
-        hovertemplate="<b>%{y}</b><br>%{x|%a %b %d, %I %p}<extra></extra>"
+    # --- NEW FEATURE: SURFLINE STYLE SWELL CHART ---
+    st.subheader("📊 Swell Quality Forecast (14-Day Overview)")
+    
+    # Pill selector for the overview chart
+    overview_spot = st.pills("View Overview For:", options=list(LOCATIONS.keys()), default=st.session_state.sel_spot)
+    
+    ov_df = all_data[overview_spot]
+    # Filter daylight hours for a cleaner visual or show all? 
+    # For a swell chart, daylight only (6am-7pm) is usually best for planning work trips.
+    ov_daylight = ov_df[(ov_df['hour'] >= 6) & (ov_df['hour'] <= 19)].copy()
+
+    fig_swell = go.Figure()
+
+    # Create the colored bars
+    fig_swell.add_trace(go.Bar(
+        x=ov_daylight['time'],
+        y=ov_daylight['wave_height_ft'],
+        marker_color=ov_daylight['color'],
+        marker_line_width=0,
+        showlegend=False,
+        hovertemplate="<b>%{x|%a %b %d %I:%M %p}</b><br>Height: %{y:.2f} ft<extra></extra>"
     ))
-    fig_matrix.update_layout(height=280, margin=dict(l=10, r=10, t=30, b=10), 
-                              xaxis=dict(side="top"), yaxis=dict(autorange="reversed"))
-    st.plotly_chart(fig_matrix, use_container_width=True)
+
+    # Add Day Labels and Vertical Lines
+    for d in ov_daylight['date'].unique():
+        # Find 12 PM for each day to place the label
+        mid_day = datetime.combine(d, datetime.min.time()) + timedelta(hours=12)
+        fig_swell.add_vline(x=datetime.combine(d, datetime.min.time()).timestamp() * 1000, 
+                            line_width=1, line_dash="dash", line_color="rgba(128,128,128,0.2)")
+        
+        fig_swell.add_annotation(
+            x=mid_day, y=max(ov_daylight['wave_height_ft']) * 1.1,
+            text=d.strftime("%a %d").upper(),
+            showarrow=False, font=dict(size=12, color="gray", family="Arial Black")
+        )
+
+    fig_swell.update_layout(
+        height=350,
+        bargap=0, # This makes the bars touch like an area chart
+        template="plotly_white",
+        margin=dict(l=40, r=10, t=50, b=10),
+        yaxis=dict(title="Wave Height (ft)", gridcolor="rgba(0,0,0,0.05)"),
+        xaxis=dict(showticklabels=False, fixedrange=True)
+    )
+    st.plotly_chart(fig_swell, use_container_width=True)
 
     st.divider()
 
@@ -175,13 +215,10 @@ def main():
 
         # --- 4. CLEAN TABLE ---
         def score_style(val):
-            if val == "GREEN": return 'background-color: rgba(0, 200, 83, 0.25)'
-            if val == "AMBER": return 'background-color: rgba(255, 235, 59, 0.25)'
-            return 'background-color: rgba(255, 75, 75, 0.25)'
+            # Maps the text "GREEN/AMBER/RED" to the hex colors defined at the top
+            hex_color = COLOR_MAP[{ "GREEN":2, "AMBER":1, "RED":0 }[val]]
+            return f'background-color: {hex_color}; color: black; opacity: 0.8;'
 
-        table_df = daylight_df[['time', 'score', 'wave_height_ft', 'period_sec', 'wind_speed_mph', 'wind_deg']].copy()
-        table_df['Condition'] = table_df['score'].map({2: "GREEN", 1: "AMBER", 0: "RED"})
-        table_df['time'] = table_df['time'].dt.strftime('%I:%M %p')
 
         st.dataframe(
             table_df[['time', 'Condition', 'wave_height_ft', 'period_sec', 'wind_speed_mph', 'wind_deg']]
