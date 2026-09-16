@@ -40,7 +40,7 @@ def next_day():
 # --- DATA FETCHING ---
 @st.cache_data(ttl=3600)
 def fetch_combined_data(lat, lon):
-    params = {"latitude": lat, "longitude": lon, "timezone": TIMEZONE, "forecast_days": 14}
+    params = {"latitude": lat, "longitude": lon, "timezone": TIMEZONE, "forecast_days": 8}
     try:
         m_resp = requests.get("https://marine-api.open-meteo.com/v1/marine", 
                              params={**params, "hourly": ["wave_height", "wave_period"]})
@@ -97,7 +97,7 @@ def main():
         return
 
     # --- NEW FEATURE: SURFLINE STYLE SWELL CHART ---
-    st.subheader("📊 Swell Quality Forecast (14-Day Overview)")
+    st.subheader("📊 Swell Quality Forecast")
     
     # Pill selector for the overview chart
     overview_spot = st.pills("View Overview For:", options=list(LOCATIONS.keys()), default=st.session_state.sel_spot)
